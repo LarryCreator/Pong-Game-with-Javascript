@@ -36,10 +36,6 @@ function getRandomInt(min, max) {
     return angle * (Math.PI / 180);
 };
 
-function moveObject(object) {
-    object.position.x += object.velocity.x;
-    object.position.y += object.velocity.y;
-}
 function rotateObject(object) {
     object.rotatedAngle += object.rotationSpeed;
 }
@@ -75,17 +71,58 @@ Opponent.prototype.moveToCenter = function() {
     const direction = Math.sign(distance);
     this.position.y += direction * this.speed;
 }
-Opponent.prototype.move = function() {
-    if (this.withinReach()) {
-        const distance = this.ball.position.y - this.position.y - this.size.h/2;
-        const direction = Math.sign(distance);
-        this.position.y += direction * this.speed;
+Opponent.prototype.predictBallPosition = function() {
+    let whereBallWillHit = {...ball.position};
+    let ballVelocity = {...ball.velocity};
+    const ballDirectionAngle = Math.atan2(ball.velocity.y, ball.velocity.x) * 180/Math.PI;
+    let bounces = 0;
+    while (whereBallWillHit.x < canvas.width) {
+        if (whereBallWillHit.y + ball.size.h >= canvas.height || whereBallWillHit.y < 0) {
+            //if ball hit top or bottom of the canvas, predict the y axis direction change
+            ballVelocity.y *= -1;
+            //keep track of bounces
+            bounces += 1;
+        }
+        if (whereBallWillHit.x <= player.position.x + player.size.w) {
+            //if ball hits the player, predict the x axis direction change
+            ballVelocity.x *= -1;
+        }
+        if (whereBallWillHit.x < player.position.x + player.size.w && whereBallWillHit.x + ball.velocity.x * ball.speed < player.position.x + player.size.w) {
+            //if ball is stuck behind the player it means you scored, so break the loop...
+            break;
+        }
+        //update the whereBallWillHit according to the calculations
+        whereBallWillHit.x += ballVelocity.x * ball.speed;
+        whereBallWillHit.y += ballVelocity.y * ball.speed;
+        
     }
-    else {
-        this.moveToCenter();
+    //if the ball direction angle is too steep, the opponent will just follow the ball in the y axis as a human would.
+    if (Math.abs(ballDirectionAngle) > 55 && Math.abs(ballDirectionAngle) < 90) {
+        //return the ball y axis 6 frames in the future, to try simulate human behavior
+        return {y: ball.position.y + (ball.velocity.y * ball.speed) * 6};
     }
-
+    return whereBallWillHit;
 }
+Opponent.prototype.move = function() {
+        if (game.counter == 0 && ball.velocity.x != 0) {
+            if (this.withinReach()) {
+                if (game.difficulty == "Professional") {
+                    const IdealSpot = this.predictBallPosition();
+                    const distanceToIdealSpot = IdealSpot.y - this.position.y - this.size.h/2;
+                    const direction = Math.sign(distanceToIdealSpot);
+                    this.position.y += direction * this.speed;
+                }
+                else {
+                    const distance = this.ball.position.y - this.position.y - this.size.h/2;
+                    const direction = Math.sign(distance);
+                    this.position.y += direction * this.speed;
+                }
+            }
+            else {
+                this.moveToCenter();
+            }
+        }
+    }
 Opponent.prototype.update = function() {
     this.move();
     drawPlayers(this);
@@ -119,6 +156,7 @@ function Ball() {
     this.position = {x: canvas.width/2, y: canvas.height/2}
     this.speed = 6;
     this.velocity = {x: -1, y: 0};
+    this.directionAngle = 0
 }
 Ball.prototype.rotate = function() {
     this.rotatedAngle += 0.101;
@@ -213,9 +251,9 @@ Ball.prototype.detectCollision = function() {
         }
     });
 }
-Ball.prototype.limitVelocity = function() {
+Ball.prototype.controlVelocity = function() {
     const magnitude = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
-    if (magnitude > 1) {
+    if (magnitude != 1 && magnitude != 0) {
         this.velocity.x /= magnitude;
         this.velocity.y /= magnitude;
     }
@@ -228,7 +266,7 @@ Ball.prototype.update = function() {
     this.stayInsideScreen();
     this.detectCollision();
     this.move();
-    this.limitVelocity();
+    this.controlVelocity();
     this.rotate();
     drawBall(this);
 }
@@ -253,6 +291,8 @@ opponent.initialize(ball);
 let game = {
     status: "menu",
     gameObjects: [player, opponent, ball],
+    secondsAfterScoring: 3,
+    scoreValue: 1,
     counter: 0,
     timeCounter: 0,
     keysBeingPressed: [],
@@ -261,19 +301,20 @@ let game = {
         ctx.fillStyle = 'white';
         ctx.font = "35px Daydream";
         ctx.fillText("Choose a mode:", canvas.width/2 - 232, 100);
-        
         //set colliders variables
         const size = {w: 500, h: 100};
         const Xpos = canvas.width/2 - size.w/2;
-        const col1Y = 150;
-        const col2Y = 256
-        const col3Y = 362;
+        const col1Y = 130;
+        const col2Y = 236
+        const col3Y = 342;
+        const col4Y = 448;
         
         //draw colliders on screen to make it easier for the player
         ctx.strokeStyle = "white";
         ctx.strokeRect(Xpos, col1Y, size.w, size.h);
         ctx.strokeRect(Xpos, col2Y, size.w, size.h);
         ctx.strokeRect(Xpos, col3Y, size.w, size.h);
+        ctx.strokeRect(Xpos, col4Y, size.w, size.h);
 
         //draw options
         ctx.fillStyle = "white";
@@ -281,21 +322,41 @@ let game = {
         ctx.fillText("Easy", Xpos + size.w/3, col1Y + size.h/2);
         ctx.fillText("Normal", Xpos + size.w/4, col2Y + size.h/2);
         ctx.fillText("Hard", Xpos + size.w/3, col3Y + size.h/2);
+        ctx.fillText("Professional", Xpos + size.w/11, col4Y + size.h/2);
 
         //detect the click
         if (mouse.x >= Xpos && mouse.x <= canvas.width/2 + size.w/2 ) {
+            //when a player chooses an option, reset the game objects and start the
+            //countdown for the game to start
             if (mouse.y >= col1Y && mouse.y <= col1Y + size.h) {
                 this.status = "started";
+                this.difficulty = "Easy";
+                this.reset();
+                this.setTimerCountDown(this.secondsAfterScoring);
             }
             else if (mouse.y >= col2Y && mouse.y <= col2Y + size.h) {
                 opponent.speed = 3;
                 ball.speed += 1;
                 this.status = "started";
+                this.difficulty = "Normal";
+                this.reset();
+                this.setTimerCountDown(this.secondsAfterScoring);
             }
             else if (mouse.y >= col3Y && mouse.y <= col3Y + size.h) {
                 opponent.speed = 4;
                 ball.speed += 2;
                 this.status = "started";
+                this.difficulty = "Hard";
+                this.reset();
+                this.setTimerCountDown(this.secondsAfterScoring);
+            }
+            else if (mouse.y >= col4Y && mouse.y <= col4Y + size.h) {
+                opponent.speed = 4;
+                ball.speed += 2;
+                this.status = "started";
+                this.difficulty = "Professional";
+                this.reset();
+                this.setTimerCountDown(this.secondsAfterScoring);
             }
         }
     },
@@ -304,19 +365,32 @@ let game = {
         ctx.fillStyle = "gray";
         ctx.fillRect(canvas.width/2 - rect.w/2, 0, rect.w, canvas.height);
     },
+    increaseScore(object) {
+        object.score += this.scoreValue;
+
+    },
+    setTimerCountDown(seconds) {
+        this.counter = seconds;
+    },
     reset() {
+        //reset player position, opponent position, ball position and ball velocity.
         player.position = {x: 20, y: canvas.height/2 - player.size.h/2};
         opponent.position = {x: canvas.width - 25, y: canvas.height/2 - opponent.size.h/2}
         ball.position = {x: canvas.width/2, y: canvas.height/2};
-        this.counter = 3;
+        ball.velocity = {x: 0, y: 0};
+        this.setTimerCountDown(this.secondsAfterScoring);
     },
     restart() {
-        if (this.timeCounter >= 180) {
-            ball.velocity.x = Math.random() < 0.5 ? 1 : -1;
-        }
+        //give the ball a random direction (right or left)
+        ball.velocity.x = Math.random() < 0.5 ? 1 : -1;
+       
+    },
+    decreaseCounter() {
+        //this decrease the counter which will restart the match when it reaches 0
         if (this.counter > 0) {
-            ball.velocity = {x: 0, y: 0};
             this.timeCounter += 1;
+            //when the timecounter is a multiple of 60, the counter decreases by one
+            //this makes sense because the game is based of a 60 frame per second gameplay
             if (this.timeCounter % 60 == 0) {
                 this.counter -= 1;
             }
@@ -325,16 +399,21 @@ let game = {
             this.timeCounter = 0;
         }
     },
-    increaseScore() {
+    takeCareOfMatches() {
         if (ball.position.x + ball.size.w >= canvas.width) {
-            player.score += 1;
+            this.increaseScore(player);
             this.reset();
         }
         else if (ball.position.x <= 0) {
-            opponent.score += 1
+            this.increaseScore(opponent);
             this.reset();
         }
-        this.restart();
+        if (this.timeCounter >= this.secondsAfterScoring * 60) {
+            this.restart();
+        }
+        //decrease counter will take care of decreasing the counter variables as
+        //soon as they are set
+        this.decreaseCounter();
     },
     drawCounter() {
         if (this.counter > 0) {
@@ -343,23 +422,42 @@ let game = {
             ctx.fillText(this.counter, canvas.width/2 - 25, canvas.height/2);
         }
     },
+    displayDifficulty() {
+        ctx.fillStyle = "white";
+        ctx.font = "15px Daydream";
+        if (this.difficulty == "Normal") {
+            ctx.fillText(this.difficulty, canvas.width/2 - 47, 28);
+        }
+        else if (this.difficulty == "Professional") {
+            ctx.fillText(this.difficulty, canvas.width/2 - 80, 28);
+        }
+        else {
+            ctx.fillText(this.difficulty, canvas.width/2 - 30, 28);
+        }
+    },
     drawScore() {
         ctx.fillStyle = "white";
         ctx.font = "23px Daydream"
         ctx.fillText(player.score, 75, 50);
         ctx.fillText(opponent.score, canvas.width - 100, 50);
     },
+    drawUI() {
+        this.drawCenterLine();
+        this.drawCounter();
+        this.drawScore();
+        this.displayDifficulty();
+    },
     updateGameObjects() {
         if (this.status == "started") {
-            this.drawCenterLine();
-            this.increaseScore();
-            this.drawCounter();
-            this.drawScore();
-            this.gameObjects.forEach((object, index)=>{
+            this.takeCareOfMatches();
+            this.drawUI();
+            keepWithinScreen(game.gameObjects[0]);
+            keepWithinScreen(game.gameObjects[1]);
+            this.gameObjects.forEach((object)=>{
                 object.update();
             })
         }
-        else {
+        else if (this.status == "menu") {
             this.drawMenu();
         }
     }
@@ -388,7 +486,6 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
     clear();
     game.updateGameObjects();
-    keepWithinScreen(game.gameObjects[0]);
 }
 
 gameLoop();
