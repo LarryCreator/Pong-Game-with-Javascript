@@ -1,18 +1,34 @@
 html {
     display: flex;
-    align-items: center;
+    overflow-y: hidden;
     justify-content: center;
     height: 100vh;
     width: 100vw;
 }
 
 body {
-    height: 100vh;
+    height: 93.9vh;
     width: 100vw;
     background-color: black;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-direction: column;
+}
+button {
+    background: none;
+    border: none;
+    outline: none;
+    color: white;
+    font-family: "Daydream";
+    position: relative;
+    padding: 1vh;
+    transform: translateY(1vh);
+    opacity: 0;
+    transition: 0.5s;
+}
+button:hover {
+    color: yellow;
 }
 @font-face {
     font-family: 'Daydream';
