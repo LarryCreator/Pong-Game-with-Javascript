@@ -547,6 +547,8 @@ changeModeButton.onclick = (e=>{
     mouse.y = 0;
     ball.speed = 6;
     opponent.speed = 2;
+    opponent.score = 0;
+    player.score = 0;
     game.timeCounter = 0;
     game.counter = 0;
     game.status = "menu";
