@@ -59,7 +59,7 @@ function restartGame() {
     opponent.score = 0;
     player.score = 0;
     game.reset();
-    game.counter = secondsAfterScoring;
+    game.counter = game.secondsAfterScoring;
 };
 
 function drawBall(object) {
