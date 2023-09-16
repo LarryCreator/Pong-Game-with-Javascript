@@ -7,6 +7,21 @@ const red = "#FF0000";
 const yellow = "#964B00"
 const green = "#008000";
 const backgroundColor = "black";
+const changeModeButton = document.querySelector("button");
+
+function makeCMBAppear(game) {
+    //CMB stands for change mode button
+    if (game.status == "match end"|| 
+        game.status == "started") {
+        changeModeButton.style.opacity = "100";
+        changeModeButton.disabled = false;
+        changeModeButton.style.border = "none";
+    }
+    else {
+        changeModeButton.style.opacity = 0;
+        changeModeButton.disabled = true;
+    }
+}
 
 
 function clear() {
@@ -14,15 +29,6 @@ function clear() {
     ctx.strokeStyle = backgroundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeRect(0, 0, canvas.width, canvas.height);
-}
-
-function keepWithinScreen(object) {
-    if (object.position.y + object.size.h >= canvas.height) {
-        object.position.y = canvas.height - object.size.h;
-    }
-    if(object.position.y <= 0) {
-        object.position.y = 0;
-    }
 }
 
 function getRandomInt(min, max) {
@@ -36,9 +42,26 @@ function getRandomInt(min, max) {
     return angle * (Math.PI / 180);
 };
 
+function keepWithinScreen(object) {
+    if (object.position.y + object.size.h >= canvas.height) {
+        object.position.y = canvas.height - object.size.h;
+    }
+    if(object.position.y <= 0) {
+        object.position.y = 0;
+    }
+}
 function rotateObject(object) {
     object.rotatedAngle += object.rotationSpeed;
 }
+
+function restartGame() {
+    game.status = "started";
+    opponent.score = 0;
+    player.score = 0;
+    game.reset();
+    game.counter = secondsAfterScoring;
+};
+
 function drawBall(object) {
     ctx.save();
     ctx.translate(object.position.x, object.position.y);
@@ -291,8 +314,9 @@ opponent.initialize(ball);
 let game = {
     status: "menu",
     gameObjects: [player, opponent, ball],
-    secondsAfterScoring: 3,
-    scoreValue: 1,
+    secondsAfterScoring: 3, //how many seconds the game counts for the match to restart
+    scoreValue: 1, //how much each "goal" is worth
+    maxScore: 5,
     counter: 0,
     timeCounter: 0,
     keysBeingPressed: [],
@@ -365,6 +389,54 @@ let game = {
         ctx.fillStyle = "gray";
         ctx.fillRect(canvas.width/2 - rect.w/2, 0, rect.w, canvas.height);
     },
+    drawEndMatchUI(object) {
+        //draw if player won or lost
+        ctx.fillStyle = "white";
+        ctx.font = "35px Daydream";
+        ctx.fillText(object.constructor == Player ? "You won!": "You lost!", canvas.width/2 - 125, 200);
+
+        //drawEndScore
+        ctx.fillStyle = "white";
+        ctx.font = "25px Daydream";
+        ctx.fillText(`${player.score} X ${opponent.score}`, canvas.width/2 - 37, 275);
+
+        //tell player to press space to play again
+        ctx.fillStyle = "white";
+        ctx.font = "25px Daydream";
+        ctx.fillText("Press space to play again...", canvas.width/2 - 270, 350);
+    },
+    drawCounter() {
+        if (this.counter > 0) {
+            ctx.fillStyle = "white";
+            ctx.font = "40px Daydream";
+            ctx.fillText(this.counter, canvas.width/2 - 25, canvas.height/2);
+        }
+    },
+    displayDifficulty() {
+        ctx.fillStyle = "white";
+        ctx.font = "15px Daydream";
+        if (this.difficulty == "Normal") {
+            ctx.fillText(this.difficulty, canvas.width/2 - 47, 28);
+        }
+        else if (this.difficulty == "Professional") {
+            ctx.fillText(this.difficulty, canvas.width/2 - 80, 28);
+        }
+        else {
+            ctx.fillText(this.difficulty, canvas.width/2 - 30, 28);
+        }
+    },
+    drawScore() {
+        ctx.fillStyle = "white";
+        ctx.font = "23px Daydream"
+        ctx.fillText(player.score, 75, 50);
+        ctx.fillText(opponent.score, canvas.width - 100, 50);
+    },
+    drawUI() {
+        this.drawCenterLine();
+        this.drawCounter();
+        this.drawScore();
+        this.displayDifficulty();
+    },
     increaseScore(object) {
         object.score += this.scoreValue;
 
@@ -399,6 +471,14 @@ let game = {
             this.timeCounter = 0;
         }
     },
+    controlMatchStatus() {
+        if (opponent.score >= 5 || player.score >=5) {
+            this.status = "match end";
+        }
+        else if (opponent.score < 5 && player.score < 5 && this.status != "menu") {
+            this.status = "started";
+        }
+    },
     takeCareOfMatches() {
         if (ball.position.x + ball.size.w >= canvas.width) {
             this.increaseScore(player);
@@ -415,39 +495,9 @@ let game = {
         //soon as they are set
         this.decreaseCounter();
     },
-    drawCounter() {
-        if (this.counter > 0) {
-            ctx.fillStyle = "white";
-            ctx.font = "40px Daydream";
-            ctx.fillText(this.counter, canvas.width/2 - 25, canvas.height/2);
-        }
-    },
-    displayDifficulty() {
-        ctx.fillStyle = "white";
-        ctx.font = "15px Daydream";
-        if (this.difficulty == "Normal") {
-            ctx.fillText(this.difficulty, canvas.width/2 - 47, 28);
-        }
-        else if (this.difficulty == "Professional") {
-            ctx.fillText(this.difficulty, canvas.width/2 - 80, 28);
-        }
-        else {
-            ctx.fillText(this.difficulty, canvas.width/2 - 30, 28);
-        }
-    },
-    drawScore() {
-        ctx.fillStyle = "white";
-        ctx.font = "23px Daydream"
-        ctx.fillText(player.score, 75, 50);
-        ctx.fillText(opponent.score, canvas.width - 100, 50);
-    },
-    drawUI() {
-        this.drawCenterLine();
-        this.drawCounter();
-        this.drawScore();
-        this.displayDifficulty();
-    },
     updateGameObjects() {
+        makeCMBAppear(this);
+        this.controlMatchStatus();
         if (this.status == "started") {
             this.takeCareOfMatches();
             this.drawUI();
@@ -457,11 +507,15 @@ let game = {
                 object.update();
             })
         }
+        else if (this.status == "match end") {
+            opponent.score == 5 ? this.drawEndMatchUI(opponent) : this.drawEndMatchUI(player);
+        }
         else if (this.status == "menu") {
             this.drawMenu();
         }
     }
 }
+
 
 window.addEventListener("keydown", function (event) {
     let keyBeingPressed = event.key;
@@ -470,6 +524,12 @@ window.addEventListener("keydown", function (event) {
             game.keysBeingPressed.push(keyBeingPressed);
         }
         
+    }
+    else if (keyBeingPressed == " ") {
+        if (game.status == "match end") {
+            restartGame();
+            
+        }
     }
 });
 window.addEventListener("keyup", function(event) {
@@ -480,6 +540,16 @@ window.addEventListener("keyup", function(event) {
         }
         
     }
+})
+
+changeModeButton.onclick = (e=>{
+    mouse.x = 0;
+    mouse.y = 0;
+    ball.speed = 6;
+    opponent.speed = 2;
+    game.timeCounter = 0;
+    game.counter = 0;
+    game.status = "menu";
 })
 
 function gameLoop() {
